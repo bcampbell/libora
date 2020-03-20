@@ -302,6 +302,11 @@ extern int ora_render_document(ORA ora, ubyte** data);
  */
 extern int ora_error(ORA ora);
 
+
+// debug function to read an ora file and dump it's structure to stdout.
+// To be removed once possible to implement with the public API.
+extern int ora_dump(ORA* ora);
+
 #ifdef __cplusplus
 }
 #endif

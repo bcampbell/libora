@@ -960,3 +960,63 @@ int ora_render_document(ORA ora, ubyte** data) {
     return 0;
 }
 
+
+int _ora_dump_node(_ora_stack_node* node, int level) {
+    for (int i = 0; i < level; ++i) {
+        printf(" ");
+    }
+    switch (node->type) {
+       case ORA_TYPE_STACK:
+           {
+               _ora_stack_stack* s = node->data;
+                printf("stack '%s' %d,%d\n", s->name, s->x, s->y);
+           }
+           break;
+       case ORA_TYPE_LAYER:
+           {
+               _ora_stack_layer* l = node->data;
+                ora_rectangle* r = &l->bounds;
+                printf("layer '%s' %d,%d %dx%d\n", l->name, r->x, r->y, r->width, r->height);
+           }
+           break;
+       case ORA_TYPE_FILTER:
+           printf("filter\n");
+           break;
+        default:
+           printf("????\n");
+           break;
+    }
+
+    _ora_stack_node *child;
+    for (child = node->children; child; child = child->sibling) {
+        int err = _ora_dump_node(child, level+1);
+        if (err < 0) {
+            return err;
+        }
+    }
+    return 0;
+}
+
+int ora_dump(ORA* ora)
+{
+    ora_document_read* read_struct;
+    _ora_stack_node* node;
+
+    if (!ora)
+        return ORA_ERROR;
+
+    ORA_CLEAR_ERROR(ora);
+    _GET_READ_DOCUMENT(ora, read_struct);
+
+    if (!read_struct)
+        return ORA_ERROR;
+
+    if (!read_struct->stack) 
+    {
+        read_struct->stack = _ora_parse_stack(read_struct->file, &(read_struct->width), &(read_struct->height), &(read_struct->error));
+        read_struct->current = read_struct->stack;
+    }
+
+    return _ora_dump_node(read_struct->stack, 0);
+}
+
