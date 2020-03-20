@@ -34,11 +34,50 @@
 #include "stack_parser.h"
 #include "utils/stringbuffer.h"
 
+#if 0
+// Helpful for debugging. Ditch this when things solidify.
+static const char *nodeName(_ora_stack_node *n) {
+    static char buf[128];
+    switch (n->type) {
+        case ORA_TYPE_STACK:
+            sprintf(buf, "'%s' (stack)", ((_ora_stack_stack*)(n->data))->name);
+            break;
+        case ORA_TYPE_LAYER:
+            sprintf(buf, "'%s' (layer)", ((_ora_stack_layer*)(n->data))->name);
+            break;
+        case ORA_TYPE_FILTER:
+            sprintf(buf, "(filter)");
+            break;
+        default:
+            sprintf(buf, "????");
+            break;
+    }
+    return buf;
+}
+#endif
+
+static void add_child(_ora_stack_node *parent, _ora_stack_node *n)
+{
+    n->parent = parent;
+    n->sibling = NULL;
+    if (!parent->children) {
+        // First child.
+        parent->children = n;
+        return;
+    }
+    // Find the last child of the parent.
+    _ora_stack_node* last = parent->children;
+    while(last->sibling) {
+        last = last->sibling;
+    }
+    last->sibling = n;
+}
+
+
 typedef struct __ora_parser_state
 {
-    _ora_stack_node* stack;
-    _ora_stack_node* parent;
-    _ora_stack_node* current;
+    _ora_stack_node* stack;     // The root stack.
+    _ora_stack_node* current;   // The stack currently in scope.
     int width;
     int height;
     char* name;
@@ -81,37 +120,20 @@ void* stack_stack_handle_open(void *userData , int arg_x  , int arg_y  , const X
 
     _ora_stack_node* node = (_ora_stack_node*) malloc(sizeof(_ora_stack_node));
     _ora_stack_stack* stack = (_ora_stack_stack*) malloc(sizeof(_ora_stack_stack));
-//printf("parent \n");
+
+    node->children = NULL;
     // is this the master stack?
-    if (!state->parent)
+    if (!state->current)
     {
 
         state->stack = node;
-        state->current = NULL;
-        state->parent = node;
         node->parent = NULL;
+        node->sibling = NULL;
     } else
     {
         // if not master stack
-        node->parent = state->parent;
-
-        // is this a sibling ...
-        if (state->current) {
-            // attach to the end of the sibling list
-            state->current->sibling = node;
-            state->current = node;
-        } else 
-        {
-            // start a list
-            state->parent->children = node;
-            state->current = node;
-        }
-
-        state->parent = node;
+        add_child(state->current, node);
     }
-
-    node->sibling = NULL;
-    node->children = NULL;
 
     node->type = ORA_TYPE_STACK;
 
@@ -120,6 +142,7 @@ void* stack_stack_handle_open(void *userData , int arg_x  , int arg_y  , const X
     stack->name = clone_xml_string(arg_name);
     node->data = stack;
 
+    state->current = node;
     return state;
 }
 
@@ -128,7 +151,7 @@ void* stack_stack_handle_close(void *userData, XML_Char* text)
     _ora_parser_state* state = (_ora_parser_state*) userData;
 
     // step up
-    state->current = NULL;
+    state->current = state->current->parent;
 
     return state;
 }
@@ -141,23 +164,8 @@ void* stack_layer_handle_open(void *userData, int arg_x, int arg_y, const XML_Ch
     _ora_stack_node* node = (_ora_stack_node*) malloc(sizeof(_ora_stack_node));
     _ora_stack_layer* stack = (_ora_stack_layer*) malloc(sizeof(_ora_stack_layer));
 
-    node->parent = state->parent;
-
-    // is this a sibling ...
-    if (state->current) {
-        // attach to the end of the sibling list
-        state->current->sibling = node;
-        state->current = node;
-    } else 
-    {
-        // start a list
-        state->parent->children = node;
-        state->current = node;
-    }
-
-
-    node->sibling = NULL;
     node->children = NULL;
+    add_child(state->current, node);
 
     node->type = ORA_TYPE_LAYER;
 
@@ -272,7 +280,6 @@ _ora_stack_node* _ora_xml_to_stack(char* source, int len, ora_rectangle* bounds,
     _ora_parser_state* state = (_ora_parser_state*) malloc(sizeof(_ora_parser_state));
     state->stack = NULL;
     state->current = NULL;
-    state->parent = NULL;
     state->name = NULL;
 
     perror = stack_parse(source, len, state);
